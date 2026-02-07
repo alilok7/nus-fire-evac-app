@@ -5,13 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Incident, UserProfile, AttendanceRecord, ResidentStatus } from '@/lib/types';
+import { Incident, UserProfile, AttendanceRecord, ResidentStatus, HelpRequest } from '@/lib/types';
 import { getGPSConfidence } from '@/lib/utils';
 
 export default function RAPage() {
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
-  
+ 
   const [incident, setIncident] = useState<Incident | null>(null);
   const [residents, setResidents] = useState<UserProfile[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -21,6 +21,25 @@ export default function RAPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [manualCheckInUser, setManualCheckInUser] = useState<UserProfile | null>(null);
   const [manualReason, setManualReason] = useState('');
+  const [helpRequests, setHelpRequests] = useState<HelpRequest[]>([]);
+
+
+{incident && helpRequests.length > 0 && (
+  <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+    <h3 className="font-bold text-red-900 mb-3">Help requests</h3>
+    <ul className="space-y-2">
+      {helpRequests.map(r => (
+        <li key={r.id} className="flex justify-between items-center bg-white rounded-lg p-3 border">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">{r.studentId}</p>
+            <p className="text-xs text-gray-600">Room {r.roomNumber || '-'}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
+
 
   // Redirect if not authenticated or not an RA
   useEffect(() => {
@@ -94,15 +113,45 @@ export default function RAPage() {
     return () => unsubscribe();
   }, [incident]);
 
+  useEffect(() => {
+  if (!incident) {
+    setHelpRequests([]);
+    return;
+  }
+
+  const q = query(
+    collection(db, 'helpRequests'),
+    where('incidentId', '==', incident.id)
+  );
+
+  const unsub = onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ ...(d.data() as any), id: d.id })) as HelpRequest[];
+      // filter in code (avoids composite index issues)
+      setHelpRequests(list.filter((r) => r.status === 'open'));
+      console.log('Help requests (open):', list.filter((r) => r.status === 'open').length);
+    },
+    (err) => {
+      console.error('helpRequests listener error:', err);
+    }
+  );
+
+  return () => unsub();
+}, [incident]);
+
+
+
+
   // Calculate resident statuses
   useEffect(() => {
     const statuses: ResidentStatus[] = residents.map(resident => {
       const record = attendance.find(a => a.userId === resident.uid);
-      
+     
       if (record) {
         const status = record.method === 'gps' ? 'accounted_gps' : 'accounted_manual';
         const gpsConfidence = record.gpsAccuracy ? getGPSConfidence(record.gpsAccuracy) : undefined;
-        
+       
         return {
           user: resident,
           status: status as 'accounted_gps' | 'accounted_manual',
@@ -110,7 +159,7 @@ export default function RAPage() {
           gpsConfidence,
         };
       }
-      
+     
       return {
         user: resident,
         status: 'missing' as const,
@@ -122,7 +171,7 @@ export default function RAPage() {
 
   const handleStartIncident = async () => {
     if (!profile || !user) return;
-    
+   
     setActionLoading(true);
     try {
       const newIncident = await addDoc(collection(db, 'incidents'), {
@@ -151,7 +200,7 @@ export default function RAPage() {
 
   const handleEndIncident = async () => {
     if (!incident || !profile || !user) return;
-    
+   
     setActionLoading(true);
     try {
       await updateDoc(doc(db, 'incidents', incident.id), {
@@ -177,7 +226,7 @@ export default function RAPage() {
 
   const handleManualCheckIn = async () => {
     if (!incident || !manualCheckInUser || !user || !profile || !manualReason.trim()) return;
-    
+   
     setActionLoading(true);
     try {
       await addDoc(collection(db, 'attendance'), {
@@ -225,9 +274,9 @@ export default function RAPage() {
     const matchesSearch = status.user.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          status.user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (status.user.roomNumber && status.user.roomNumber.includes(searchTerm));
-    
+   
     const matchesFilter = filterStatus === 'all' || status.status === filterStatus;
-    
+   
     return matchesSearch && matchesFilter;
   });
 
@@ -309,13 +358,33 @@ export default function RAPage() {
             </div>
           </div>
         )}
+       
+        {incident && (
+  <div className="bg-white rounded-xl shadow-sm border p-6">
+    <h3 className="font-semibold text-gray-900 mb-2">Help requests</h3>
+
+    {helpRequests.length === 0 ? (
+      <p className="text-sm text-gray-600">No open help requests.</p>
+    ) : (
+      <ul className="divide-y">
+        {helpRequests.map((r) => (
+          <li key={r.id} className="py-3 flex justify-between">
+            <span className="text-sm font-medium text-gray-900">{r.studentId}</span>
+            <span className="text-sm text-gray-600">Room {r.roomNumber || '-'}</span>
+          </li>
+        ))}
+      </ul>
+    )}
+  </div>
+)}
+
 
         {/* Roster Table */}
         {incident && (
           <div className="bg-white rounded-xl shadow-sm border">
             <div className="p-6 border-b">
               <h3 className="font-semibold text-gray-900 mb-4">Resident Roster</h3>
-              
+             
               {/* Filters */}
               <div className="flex flex-col sm:flex-row gap-3">
                 <input
@@ -385,7 +454,7 @@ export default function RAPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         {status.record ? (
-                          status.record.accountedAt instanceof Timestamp 
+                          status.record.accountedAt instanceof Timestamp
                             ? status.record.accountedAt.toDate().toLocaleTimeString()
                             : new Date(status.record.accountedAt).toLocaleTimeString()
                         ) : '-'}
@@ -423,7 +492,7 @@ export default function RAPage() {
             <p className="text-sm text-gray-600 mb-4">
               Mark <span className="font-semibold">{manualCheckInUser.studentId}</span> as present
             </p>
-            
+           
             <textarea
               value={manualReason}
               onChange={(e) => setManualReason(e.target.value)}
@@ -431,7 +500,7 @@ export default function RAPage() {
               rows={3}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none mb-4"
             />
-            
+           
             <div className="flex gap-3">
               <button
                 onClick={() => {
