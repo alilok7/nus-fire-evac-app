@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/lib/AuthContext";
+import { motion } from "framer-motion";
 import {
   fetchCheckpoints,
   createCheckpoint,
@@ -32,6 +34,8 @@ const GOOGLE_LIBRARIES: ("places")[] = ["places"];
 
 export default function OfficeResidencePage() {
   const params = useParams();
+  const router = useRouter();
+  const { user, profile, loading: authLoading } = useAuth();
   const hostelId = String(params.hostelId);
 
   // ✅ Step D: load Google Maps JS + Places library
@@ -51,12 +55,16 @@ export default function OfficeResidencePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [blockCount, setBlockCount] = useState(0);
-  const [floorCount, setFloorCount] = useState(0);
-
   const [raStudentId, setRaStudentId] = useState("");
   const [raAssignments, setRaAssignments] = useState<{ id: string; raStudentId: string; hostelId: string }[]>([]);
   const [assignmentBusy, setAssignmentBusy] = useState(false);
+  const [activeIncident, setActiveIncident] = useState<{ id: string; startedAt: Timestamp } | null>(null);
+
+  useEffect(() => {
+    if (!authLoading && (!user || !profile || profile.role !== "office")) {
+      router.push("/login");
+    }
+  }, [user, profile, authLoading, router]);
 
   useEffect(() => {
     const run = async () => {
@@ -73,19 +81,6 @@ export default function OfficeResidencePage() {
           setHostelName(hostelId);
         }
 
-        // blocks
-        const blocksSnap = await getDocs(
-          query(collection(db, "blocks"), where("hostelId", "==", hostelId))
-        );
-
-        // floors
-        const floorsSnap = await getDocs(
-          query(collection(db, "floors"), where("hostelId", "==", hostelId))
-        );
-
-        setBlockCount(blocksSnap.size);
-        setFloorCount(floorsSnap.size);
-
         // checkpoints
         const cps = await fetchCheckpoints(hostelId);
         setCheckpoints(cps);
@@ -98,6 +93,27 @@ export default function OfficeResidencePage() {
     };
 
     run();
+  }, [hostelId]);
+
+  useEffect(() => {
+    const q = query(
+      collection(db, "incidents"),
+      where("hostelId", "==", hostelId),
+      where("status", "==", "active")
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const doc = snapshot.docs[0];
+        const data = doc.data();
+        setActiveIncident({
+          id: doc.id,
+          startedAt: data.startedAt as Timestamp,
+        });
+      } else {
+        setActiveIncident(null);
+      }
+    });
+    return () => unsub();
   }, [hostelId]);
 
   useEffect(() => {
@@ -180,29 +196,25 @@ export default function OfficeResidencePage() {
     setError(null);
 
     try {
-      const floorsSnap = await getDocs(
-        query(collection(db, "floors"), where("hostelId", "==", hostelId))
+      const existing = await getDocs(
+        query(
+          collection(db, "incidents"),
+          where("hostelId", "==", hostelId),
+          where("status", "==", "active")
+        )
       );
-
-      if (floorsSnap.size === 0) {
-        alert("No floors exist for this residence yet. Create floors first.");
+      if (!existing.empty) {
+        alert("An incident is already active for this residence.");
         return;
       }
 
-      await Promise.all(
-        floorsSnap.docs.map(async (d) => {
-          const f = d.data() as any;
-          await addDoc(collection(db, "incidents"), {
-            hostelId,
-            blockId: f.blockId,
-            floorId: d.id,
-            status: "active",
-            startedAt: Timestamp.now(),
-          });
-        })
-      );
+      await addDoc(collection(db, "incidents"), {
+        hostelId,
+        status: "active",
+        startedAt: Timestamp.now(),
+      });
 
-      alert(`Started incidents for ${floorsSnap.size} floors.`);
+      alert("Incident started for this residence.");
     } catch (e: any) {
       console.error(e);
       setError(e?.message || String(e));
@@ -227,13 +239,13 @@ export default function OfficeResidencePage() {
       await Promise.all(
         activeSnap.docs.map(async (d) => {
           await updateDoc(doc(db, "incidents", d.id), {
-            status: "resolved",
-            resolvedAt: Timestamp.now(),
+            status: "ended",
+            endedAt: Timestamp.now(),
           });
         })
       );
 
-      alert(`Ended ${activeSnap.size} active incidents.`);
+      alert(`Ended ${activeSnap.size} active incident(s).`);
     } catch (e: any) {
       console.error(e);
       setError(e?.message || String(e));
@@ -243,30 +255,40 @@ export default function OfficeResidencePage() {
   };
 
   return (
-    <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-3xl space-y-6">
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
         <Link
           href="/office"
-          className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+          className="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 transition-colors hover:text-blue-700"
         >
-          ← Back
+          ← Back to Residences
         </Link>
-      </div>
+      </motion.div>
 
       {/* CARD 1: Hostel Info + Incidents */}
-      <div className="bg-white rounded-xl shadow-sm border p-6">
+      <motion.div
+        className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+      >
         <h1 className="text-2xl font-bold text-gray-900">{hostelName}</h1>
         <p className="text-sm text-gray-600 mt-1">Residence ID: {hostelId}</p>
 
-        <div className="mt-4 text-sm text-gray-700">
-          {loading ? (
-            <p>Loading blocks/floors…</p>
-          ) : (
-            <p>
-              Blocks: <b>{blockCount}</b> · Floors: <b>{floorCount}</b>
-            </p>
-          )}
-        </div>
+        {activeIncident && (
+          <div className="mt-4 flex items-center gap-3 rounded-lg border-2 border-red-200 bg-red-50 p-4">
+            <div className="h-3 w-3 shrink-0 rounded-full bg-red-500 animate-pulse" />
+            <div>
+              <p className="font-semibold text-red-900">Active incident in progress</p>
+              <p className="text-sm text-red-700">
+                Started at{" "}
+                {activeIncident.startedAt instanceof Timestamp
+                  ? activeIncident.startedAt.toDate().toLocaleTimeString()
+                  : new Date(activeIncident.startedAt as any).toLocaleTimeString()}
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="mt-5 flex gap-3">
           <button
@@ -292,10 +314,15 @@ export default function OfficeResidencePage() {
             <div className="mt-1">{error}</div>
           </div>
         )}
-      </div>
+      </motion.div>
 
       {/* CARD 2: Assign RA to accommodation */}
-      <div className="bg-white rounded-xl shadow-sm border p-6">
+      <motion.div
+        className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
         <h2 className="font-semibold text-gray-900 mb-3">Assign RA to this accommodation</h2>
         <p className="text-sm text-gray-600 mb-4">
           Assign an RA (by student ID) to this accommodation. The RA will see all residents in {hostelName} on their dashboard.
@@ -331,10 +358,15 @@ export default function OfficeResidencePage() {
             </ul>
           </div>
         )}
-      </div>
+      </motion.div>
 
       {/* CARD 3: Checkpoints */}
-      <div className="bg-white rounded-xl shadow-sm border p-6">
+      <motion.div
+        className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+      >
         <h2 className="font-semibold text-gray-900 mb-3">Checkpoints</h2>
 
         {/* ✅ Google Places search bar */}
@@ -429,7 +461,7 @@ export default function OfficeResidencePage() {
             </ul>
           )}
         </div>
-      </div>
-    </main>
+      </motion.div>
+    </div>
   );
 }

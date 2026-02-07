@@ -1,4 +1,4 @@
-export type UserRole = 'resident' | 'ra' | 'admin';
+export type UserRole = 'resident' | 'ra' | 'office';
 
 export interface UserProfile {
   uid: string;
@@ -6,8 +6,6 @@ export interface UserProfile {
   studentId: string;
   role: UserRole;
   hostelId: string;
-  blockId: string;
-  floorId: string;
   roomNumber?: string;
   createdAt: Date;
 }
@@ -18,29 +16,12 @@ export interface Hostel {
   createdAt: Date;
 }
 
-export interface Block {
-  id: string;
-  hostelId: string;
-  name: string;
-  createdAt: Date;
-}
-
-export interface Floor {
-  id: string;
-  hostelId: string;
-  blockId: string;
-  name: string;
-  createdAt: Date;
-}
-
 export interface Checkpoint {
   id: string;
   hostelId: string;
-  blockId: string;
-  floorId: string;
   latitude: number;
   longitude: number;
-  radiusMeters: number; // default 100
+  radiusMeters: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -48,13 +29,11 @@ export interface Checkpoint {
 export interface Incident {
   id: string;
   hostelId: string;
-  blockId: string;
-  floorId: string;
   status: 'active' | 'ended';
   startedAt: Date;
   endedAt?: Date;
-  startedBy: string; // RA uid
-  endedBy?: string; // RA uid
+  startedBy?: string;
+  endedBy?: string;
 }
 
 export interface AttendanceRecord {

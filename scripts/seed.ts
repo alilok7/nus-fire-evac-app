@@ -2,26 +2,43 @@
  * Seed script for EvacTrack
  * Run with: npx tsx scripts/seed.ts
  *
- * What it does:
- * 1) Seeds ALL NUS residences into Firestore (hostels collection)
- *    - Halls, Houses, Residential Colleges, Student Residences
- * 2) For each residence, creates a basic structure so the app can work:
- *    - 1 block (Block A)
- *    - 3 floors (Floor 1-3)
- *    - 3 checkpoints (one per floor) with a safe default coordinate near NUS
- * 3) Keeps the existing Temasek demo accounts (RAs + residents) so you can log in immediately.
+ * 1. Put serviceAccountKey.json in project root (from Firebase Console > Project Settings > Service Accounts > Generate new private key)
+ * 2. Or set FIREBASE_SERVICE_ACCOUNT_PATH in .env.local to the path of your key file
+ * 3. Or set GOOGLE_APPLICATION_CREDENTIALS to the path of your key file
  */
 
-import { initializeApp, getApps } from 'firebase-admin/app';
+import { config } from 'dotenv';
+import { resolve, join } from 'path';
+import { existsSync, readFileSync } from 'fs';
+
+config({ path: resolve(process.cwd(), '.env.local') });
+
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { NUS_RESIDENCES } from '../lib/nusResidences';
 
+// Resolve service account key path
+const defaultPaths = ['serviceAccountKey.json', 'serviceAccount.json'];
+const credPath =
+  process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+  process.env.FIREBASE_SERVICE_ACCOUNT_PATH ||
+  defaultPaths.map((p) => join(process.cwd(), p)).find((p) => existsSync(p));
+
 // Initialize Firebase Admin
 if (getApps().length === 0) {
-  initializeApp({
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  });
+  const projectId = (process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || '').trim();
+  if (credPath && existsSync(credPath)) {
+    const serviceAccount = JSON.parse(readFileSync(credPath, 'utf-8'));
+    initializeApp({ credential: cert(serviceAccount), projectId: projectId || serviceAccount.project_id });
+  } else {
+    if (!projectId) {
+      console.error('❌ Missing: Set NEXT_PUBLIC_FIREBASE_PROJECT_ID in .env.local');
+      console.error('   And put serviceAccount.json or serviceAccountKey.json in project root, or set GOOGLE_APPLICATION_CREDENTIALS');
+      process.exit(1);
+    }
+    initializeApp({ projectId });
+  }
 }
 
 const auth = getAuth();
@@ -29,11 +46,8 @@ const db = getFirestore();
 
 const DEMO_PASSWORD = 'Demo123!';
 
-// Demo data structure
+// Demo residence (Temasek Hall)
 const hostelId = 'temasek-hall';
-const blockId = 'block-a';
-const floor3Id = 'floor-3';
-const floor4Id = 'floor-4';
 
 // NUS coordinates (approximate - Temasek Hall)
 const TEMASEK_LAT = 1.2926;
@@ -49,33 +63,43 @@ const DEFAULT_RADIUS_METERS = 300;
 interface DemoUser {
   email: string;
   studentId: string;
-  role: 'resident' | 'ra';
-  floorId: string;
+  role: 'resident' | 'ra' | 'office';
   roomNumber?: string;
 }
 
+function slugify(input: string) {
+  return input
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
+const HOSTEL_DOCS = NUS_RESIDENCES.map((name) => ({
+  id: slugify(name),
+  name,
+  model: 'hall',
+}));
+
 const demoUsers: DemoUser[] = [
-  // Floor 3 RA
-  { email: 'ra.floor3@e.ntu.edu.sg', studentId: 'A0001001X', role: 'ra', floorId: floor3Id },
-  
-  // Floor 3 Residents
-  { email: 'resident1.f3@e.ntu.edu.sg', studentId: 'A0101001A', role: 'resident', floorId: floor3Id, roomNumber: '301' },
-  { email: 'resident2.f3@e.ntu.edu.sg', studentId: 'A0101002B', role: 'resident', floorId: floor3Id, roomNumber: '302' },
-  { email: 'resident3.f3@e.ntu.edu.sg', studentId: 'A0101003C', role: 'resident', floorId: floor3Id, roomNumber: '303' },
-  { email: 'resident4.f3@e.ntu.edu.sg', studentId: 'A0101004D', role: 'resident', floorId: floor3Id, roomNumber: '304' },
-  { email: 'resident5.f3@e.ntu.edu.sg', studentId: 'A0101005E', role: 'resident', floorId: floor3Id, roomNumber: '305' },
-  { email: 'resident6.f3@e.ntu.edu.sg', studentId: 'A0101006F', role: 'resident', floorId: floor3Id, roomNumber: '306' },
-  
-  // Floor 4 RA
-  { email: 'ra.floor4@e.ntu.edu.sg', studentId: 'A0001002Y', role: 'ra', floorId: floor4Id },
-  
-  // Floor 4 Residents
-  { email: 'resident1.f4@e.ntu.edu.sg', studentId: 'A0102001G', role: 'resident', floorId: floor4Id, roomNumber: '401' },
-  { email: 'resident2.f4@e.ntu.edu.sg', studentId: 'A0102002H', role: 'resident', floorId: floor4Id, roomNumber: '402' },
-  { email: 'resident3.f4@e.ntu.edu.sg', studentId: 'A0102003I', role: 'resident', floorId: floor4Id, roomNumber: '403' },
-  { email: 'resident4.f4@e.ntu.edu.sg', studentId: 'A0102004J', role: 'resident', floorId: floor4Id, roomNumber: '404' },
-  { email: 'resident5.f4@e.ntu.edu.sg', studentId: 'A0102005K', role: 'resident', floorId: floor4Id, roomNumber: '405' },
-  { email: 'resident6.f4@e.ntu.edu.sg', studentId: 'A0102006L', role: 'resident', floorId: floor4Id, roomNumber: '406' },
+  // Office - can assign RA access
+  { email: 'office@e.ntu.edu.sg', studentId: 'OFFICE001', role: 'office' },
+  // RAs
+  { email: 'ra.floor3@e.ntu.edu.sg', studentId: 'A0001001X', role: 'ra' },
+  { email: 'ra.floor4@e.ntu.edu.sg', studentId: 'A0001002Y', role: 'ra' },
+  // Residents
+  { email: 'resident1.f3@e.ntu.edu.sg', studentId: 'A0101001A', role: 'resident', roomNumber: '301' },
+  { email: 'resident2.f3@e.ntu.edu.sg', studentId: 'A0101002B', role: 'resident', roomNumber: '302' },
+  { email: 'resident3.f3@e.ntu.edu.sg', studentId: 'A0101003C', role: 'resident', roomNumber: '303' },
+  { email: 'resident4.f3@e.ntu.edu.sg', studentId: 'A0101004D', role: 'resident', roomNumber: '304' },
+  { email: 'resident5.f3@e.ntu.edu.sg', studentId: 'A0101005E', role: 'resident', roomNumber: '305' },
+  { email: 'resident6.f3@e.ntu.edu.sg', studentId: 'A0101006F', role: 'resident', roomNumber: '306' },
+  { email: 'resident1.f4@e.ntu.edu.sg', studentId: 'A0102001G', role: 'resident', roomNumber: '401' },
+  { email: 'resident2.f4@e.ntu.edu.sg', studentId: 'A0102002H', role: 'resident', roomNumber: '402' },
+  { email: 'resident3.f4@e.ntu.edu.sg', studentId: 'A0102003I', role: 'resident', roomNumber: '403' },
+  { email: 'resident4.f4@e.ntu.edu.sg', studentId: 'A0102004J', role: 'resident', roomNumber: '404' },
+  { email: 'resident5.f4@e.ntu.edu.sg', studentId: 'A0102005K', role: 'resident', roomNumber: '405' },
+  { email: 'resident6.f4@e.ntu.edu.sg', studentId: 'A0102006L', role: 'resident', roomNumber: '406' },
 ];
 
 async function seed() {
@@ -84,7 +108,7 @@ async function seed() {
   try {
     // 1) Seed ALL NUS residences
     console.log('🏠 Seeding NUS residences (hostels)...');
-    for (const r of NUS_RESIDENCES) {
+    for (const r of HOSTEL_DOCS) {
       await db.collection('hostels').doc(r.id).set(
         {
           id: r.id,
@@ -95,64 +119,30 @@ async function seed() {
         { merge: true }
       );
     }
-    console.log(`✅ Seeded ${NUS_RESIDENCES.length} residences\n`);
+    console.log(`✅ Seeded ${HOSTEL_DOCS.length} residences\n`);
 
-    // 2) Create a basic structure (Block A + Floor 1-3 + checkpoints) for every residence.
-    // IMPORTANT: Block/Floor document IDs must be globally unique (top-level collections),
-    // so we prefix them with the hostelId.
-    console.log('🏗️  Creating blocks, floors, checkpoints for each residence...');
+    // 2) Create one checkpoint per residence (evacuation assembly point)
+    console.log('🏗️  Creating checkpoints for each residence...');
 
-    for (const r of NUS_RESIDENCES) {
-      // Keep legacy Temasek IDs so existing demo accounts still work.
+    for (const r of HOSTEL_DOCS) {
       const isTemasekDemo = r.id === hostelId;
-      const blockDocId = isTemasekDemo ? blockId : `${r.id}-block-a`;
-
-      await db.collection('blocks').doc(blockDocId).set(
+      const checkpointId = `checkpoint-${r.id}`;
+      await db.collection('checkpoints').doc(checkpointId).set(
         {
-          id: blockDocId,
+          id: checkpointId,
           hostelId: r.id,
-          name: 'Block A',
+          name: `${r.name} Assembly Point`,
+          lat: isTemasekDemo ? TEMASEK_LAT : DEFAULT_NUS_LAT,
+          lng: isTemasekDemo ? TEMASEK_LNG : DEFAULT_NUS_LNG,
+          radiusMeters: isTemasekDemo ? 100 : DEFAULT_RADIUS_METERS,
           createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
         },
         { merge: true }
       );
-
-      // Floors + checkpoints
-      const floorNumbers = isTemasekDemo ? [3, 4] : [1, 2, 3];
-      for (const n of floorNumbers) {
-        const floorDocId = isTemasekDemo ? `floor-${n}` : `${r.id}-floor-${n}`;
-
-        await db.collection('floors').doc(floorDocId).set(
-          {
-            id: floorDocId,
-            hostelId: r.id,
-            blockId: blockDocId,
-            name: `Floor ${n}`,
-            createdAt: Timestamp.now(),
-          },
-          { merge: true }
-        );
-
-        const checkpointId = `checkpoint-${floorDocId}`;
-        const isTemasek = isTemasekDemo;
-        await db.collection('checkpoints').doc(checkpointId).set(
-          {
-            id: checkpointId,
-            hostelId: r.id,
-            blockId: blockDocId,
-            floorId: floorDocId,
-            latitude: isTemasek ? TEMASEK_LAT + n * 0.00001 : DEFAULT_NUS_LAT,
-            longitude: isTemasek ? TEMASEK_LNG : DEFAULT_NUS_LNG,
-            radiusMeters: isTemasek ? 100 : DEFAULT_RADIUS_METERS,
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          },
-          { merge: true }
-        );
-      }
     }
 
-    console.log('✅ Blocks, floors, checkpoints created\n');
+    console.log('✅ Checkpoints created\n');
 
     // 5. Create users
     console.log('👥 Creating users...');
@@ -166,14 +156,13 @@ async function seed() {
         });
 
         // Create user profile
+        const isOffice = demoUser.role === 'office';
         await db.collection('users').doc(userRecord.uid).set({
           uid: userRecord.uid,
           email: demoUser.email,
           studentId: demoUser.studentId,
           role: demoUser.role,
-          hostelId,
-          blockId,
-          floorId: demoUser.floorId,
+          hostelId: isOffice ? '' : hostelId,
           roomNumber: demoUser.roomNumber || null,
           createdAt: Timestamp.now(),
         }, { merge: true });
@@ -188,15 +177,26 @@ async function seed() {
       }
     }
 
-    console.log('\n✨ Seed completed successfully!\n');
-    console.log('📋 Demo Accounts:');
-    console.log('   All accounts use password: Demo123!\n');
-    console.log('   RAs:');
-    console.log('   - ra.floor3@e.ntu.edu.sg (Floor 3)');
-    console.log('   - ra.floor4@e.ntu.edu.sg (Floor 4)\n');
-    console.log('   Residents (sample):');
-    console.log('   - resident1.f3@e.ntu.edu.sg (Floor 3, Room 301)');
-    console.log('   - resident1.f4@e.ntu.edu.sg (Floor 4, Room 401)\n');
+    // 6. Seed raAccess - add A0101001A as demo RA so workflow can be tested
+    console.log('🔑 Seeding raAccess (RA access list)...');
+    await db.collection('raAccess').doc('a0101001a').set(
+      { studentId: 'A0101001A' },
+      { merge: true }
+    );
+    console.log('   ✅ A0101001A has RA access (resident1.f3)\n');
+
+    console.log('✨ Seed completed successfully!\n');
+    console.log('📋 Demo Accounts (password: Demo123!):');
+    console.log('   Office: office@e.ntu.edu.sg - Assign RA access, manage residences, start incidents\n');
+    console.log('   RAs (assign via Office RA Access + RA Assignments):');
+    console.log('   - ra.floor3@e.ntu.edu.sg (A0001001X)');
+    console.log('   - ra.floor4@e.ntu.edu.sg (A0001002Y)\n');
+    console.log('   Residents:');
+    console.log('   - resident1.f3@e.ntu.edu.sg (A0101001A) - PRE-ASSIGNED RA in seed');
+    console.log('   - resident2.f3@e.ntu.edu.sg (A0101002B) - No RA access\n');
+    console.log('   Workflow: 1) Login as Office → assign student ID to RA Access');
+    console.log('            2) Login as that student → should have RA access');
+    console.log('            3) Login as resident2.f3 → should NOT have RA access\n');
     
   } catch (error) {
     console.error('❌ Seed failed:', error);

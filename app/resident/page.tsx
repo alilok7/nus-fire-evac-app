@@ -7,10 +7,11 @@ import { collection, query, where, onSnapshot, addDoc, getDocs, Timestamp,  doc,
 import { db } from '@/lib/firebase';
 import { Incident, Checkpoint, AttendanceRecord, LocationState, HelpRequest } from '@/lib/types';
 import { getCurrentPosition, calculateDistance, formatDistance, getGPSConfidence } from '@/lib/utils';
+import { motion } from 'framer-motion';
 
 
 export default function ResidentPage() {
-  const { user, profile, loading: authLoading, signOut } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const router = useRouter();
  
   const [incident, setIncident] = useState<Incident | null>(null);
@@ -31,22 +32,21 @@ export default function ResidentPage() {
     }
   }, [user, profile, authLoading, router]);
 
-  // Listen to active incident for this resident's floor
+  // Listen to active incidents for this resident's residence (hostel/accommodation)
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || !profile.hostelId) return;
 
     const q = query(
       collection(db, 'incidents'),
       where('hostelId', '==', profile.hostelId),
-      where('blockId', '==', profile.blockId),
-      where('floorId', '==', profile.floorId),
       where('status', '==', 'active')
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
-        const incidentData = snapshot.docs[0].data() as Incident;
-        setIncident({ ...incidentData, id: snapshot.docs[0].id });
+        const doc = snapshot.docs[0];
+        const incidentData = doc.data() as Incident;
+        setIncident({ ...incidentData, id: doc.id });
       } else {
         setIncident(null);
         setAttendance(null);
@@ -56,21 +56,31 @@ export default function ResidentPage() {
     return () => unsubscribe();
   }, [profile]);
 
-  // Fetch checkpoint when incident is active
+  // Fetch checkpoint when incident is active (one per residence)
   useEffect(() => {
     if (!incident || !profile) return;
 
     const fetchCheckpoint = async () => {
       const q = query(
         collection(db, 'checkpoints'),
-        where('hostelId', '==', profile.hostelId),
-        where('blockId', '==', profile.blockId),
-        where('floorId', '==', profile.floorId)
+        where('hostelId', '==', profile.hostelId)
       );
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
-        const checkpointData = snapshot.docs[0].data() as Checkpoint;
-        setCheckpoint({ ...checkpointData, id: snapshot.docs[0].id });
+        const d = snapshot.docs[0];
+        const data = d.data() as Record<string, unknown>;
+        const checkpointData: Checkpoint = {
+          id: d.id,
+          hostelId: data.hostelId as string,
+          latitude: (data.latitude ?? data.lat) as number,
+          longitude: (data.longitude ?? data.lng) as number,
+          radiusMeters: data.radiusMeters as number,
+          createdAt: data.createdAt as Date,
+          updatedAt: data.updatedAt as Date,
+        };
+        setCheckpoint(checkpointData);
+      } else {
+        setCheckpoint(null);
       }
     };
 
@@ -216,27 +226,26 @@ export default function ResidentPage() {
 
   const canCheckIn = incident && checkpoint && location && distance !== null && distance <= checkpoint.radiusMeters && !attendance;
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">EvacTrack</h1>
-            <p className="text-sm text-gray-600">{profile.studentId} • {profile.roomNumber}</p>
-          </div>
-          <button
-            onClick={() => signOut()}
-            className="text-sm text-gray-600 hover:text-gray-900"
-          >
-            Sign Out
-          </button>
-        </div>
-      </header>
+  const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
+  const item = { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } };
 
-      <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+  return (
+    <motion.div
+      className="mx-auto max-w-2xl space-y-6"
+      variants={container}
+      initial="hidden"
+      animate="show"
+    >
+      <motion.div variants={item}>
+        <h1 className="text-xl font-bold text-gray-900">Resident Dashboard</h1>
+        <p className="text-sm text-gray-600">{profile.studentId} {profile.roomNumber && `• Room ${profile.roomNumber}`}</p>
+      </motion.div>
+
         {/* Incident Status Card */}
-        <div className={`rounded-xl p-6 ${incident ? 'bg-red-50 border-2 border-red-200' : 'bg-green-50 border-2 border-green-200'}`}>
+        <motion.div
+          className={`rounded-xl p-6 ${incident ? 'border-2 border-red-200 bg-red-50' : 'border-2 border-green-200 bg-green-50'}`}
+          variants={item}
+        >
           <div className="flex items-center gap-3 mb-2">
             <div className={`w-3 h-3 rounded-full ${incident ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
             <h2 className="text-lg font-bold text-gray-900">
@@ -248,11 +257,11 @@ export default function ResidentPage() {
               ? `Evacuation started at ${incident.startedAt instanceof Timestamp ? incident.startedAt.toDate().toLocaleTimeString() : new Date(incident.startedAt).toLocaleTimeString()}`
               : 'You will be notified when an evacuation is initiated.'}
           </p>
-        </div>
+        </motion.div>
 
         {/* Attendance Status */}
         {incident && (
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+          <motion.div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm" variants={item}>
             <h3 className="font-semibold text-gray-900 mb-4">Attendance Status</h3>
            
             {attendance ? (
@@ -285,47 +294,51 @@ export default function ResidentPage() {
                 </p>
               </div>
             )}
-          </div>
+          </motion.div>
         )}
        
         {/* Emergency */}
         {incident && (
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h3 className="font-semibold text-gray-900 mb-2">Emergency</h3>
+          <motion.div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm" variants={item}>
+            <h3 className="mb-2 font-semibold text-gray-900">Emergency</h3>
 
             {helpRequest?.status === 'open' ? (
-              <button
+              <motion.button
                 onClick={resolveHelp}
-                className="w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 rounded-lg"
+                className="w-full rounded-lg bg-gray-800 py-3 font-semibold text-white hover:bg-gray-900"
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
               >
                 I’m safe now (cancel help request)
-              </button>
+              </motion.button>
             ) : (
-              <button
+              <motion.button
                 onClick={requestHelp}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg"
+                className="w-full rounded-lg bg-red-600 py-3 font-semibold text-white hover:bg-red-700"
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
               >
                 I NEED HELP
-              </button>
+              </motion.button>
             )}
 
-            <p className="text-xs text-gray-500 mt-2">
-              This alerts the RA for your floor and shows your room number.
+            <p className="mt-2 text-xs text-gray-500">
+              This alerts the RA for your residence and shows your room number.
             </p>
-          </div>
+          </motion.div>
         )}
 
 
         {/* Location & Check-in */}
         {incident && checkpoint && !attendance && (
-          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+          <motion.div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4" variants={item}>
             <h3 className="font-semibold text-gray-900">Check-in</h3>
 
             {/* Checkpoint Info */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-sm font-medium text-blue-900 mb-1">Evacuation Checkpoint</p>
               <p className="text-xs text-blue-700">
-                {profile.floorId.replace('-', ' ').toUpperCase()} • {checkpoint.radiusMeters}m radius
+                {checkpoint.radiusMeters}m radius
               </p>
             </div>
 
@@ -381,12 +394,12 @@ export default function ResidentPage() {
                 </button>
               )}
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* Info Card */}
         {!incident && (
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+          <motion.div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm" variants={item}>
             <h3 className="font-semibold text-gray-900 mb-2">How it works</h3>
             <ul className="text-sm text-gray-600 space-y-2">
               <li className="flex gap-2">
@@ -402,9 +415,8 @@ export default function ResidentPage() {
                 <span>Use the "Get My Location" button and check in when within 100m of the checkpoint.</span>
               </li>
             </ul>
-          </div>
+          </motion.div>
         )}
-      </main>
-    </div>
+    </motion.div>
   );
 }

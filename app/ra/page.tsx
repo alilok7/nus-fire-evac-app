@@ -7,9 +7,10 @@ import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, getDocs, 
 import { db } from '@/lib/firebase';
 import { Incident, UserProfile, AttendanceRecord, ResidentStatus, HelpRequest } from '@/lib/types';
 import { getGPSConfidence } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function RAPage() {
-  const { user, profile, loading: authLoading, signOut } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const router = useRouter();
  
   const [incident, setIncident] = useState<Incident | null>(null);
@@ -24,24 +25,6 @@ export default function RAPage() {
   const [manualReason, setManualReason] = useState('');
   const [helpRequests, setHelpRequests] = useState<HelpRequest[]>([]);
 
-
-{incident && helpRequests.length > 0 && (
-  <div className="bg-red-50 border border-red-200 rounded-xl p-6">
-    <h3 className="font-bold text-red-900 mb-3">Help requests</h3>
-    <ul className="space-y-2">
-      {helpRequests.map(r => (
-        <li key={r.id} className="flex justify-between items-center bg-white rounded-lg p-3 border">
-          <div>
-            <p className="text-sm font-semibold text-gray-900">{r.studentId}</p>
-            <p className="text-xs text-gray-600">Room {r.roomNumber || '-'}</p>
-          </div>
-        </li>
-      ))}
-    </ul>
-  </div>
-)}
-
-
   // Redirect if not authenticated or not an RA
   useEffect(() => {
     if (!authLoading && (!user || !profile || profile.role !== 'ra')) {
@@ -49,15 +32,16 @@ export default function RAPage() {
     }
   }, [user, profile, authLoading, router]);
 
-  // Listen to active incident for this RA's floor
+  // Listen to active incident for this RA's residence (from raAssignment)
   useEffect(() => {
     if (!profile) return;
 
+    const effectiveHostelId = raAssignmentHostelId ?? profile.hostelId;
+    if (!effectiveHostelId) return;
+
     const q = query(
       collection(db, 'incidents'),
-      where('hostelId', '==', profile.hostelId),
-      where('blockId', '==', profile.blockId),
-      where('floorId', '==', profile.floorId),
+      where('hostelId', '==', effectiveHostelId),
       where('status', '==', 'active')
     );
 
@@ -72,7 +56,7 @@ export default function RAPage() {
     });
 
     return () => unsubscribe();
-  }, [profile]);
+  }, [profile, raAssignmentHostelId]);
 
   // Get hostelId from raAssignments or fall back to profile
   useEffect(() => {
@@ -191,13 +175,14 @@ export default function RAPage() {
 
   const handleStartIncident = async () => {
     if (!profile || !user) return;
+
+    const effectiveHostelId = raAssignmentHostelId ?? profile.hostelId;
+    if (!effectiveHostelId) return;
    
     setActionLoading(true);
     try {
       const newIncident = await addDoc(collection(db, 'incidents'), {
-        hostelId: profile.hostelId,
-        blockId: profile.blockId,
-        floorId: profile.floorId,
+        hostelId: effectiveHostelId,
         status: 'active',
         startedAt: Timestamp.now(),
         startedBy: user.uid,
@@ -308,100 +293,121 @@ export default function RAPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">RA Dashboard</h1>
-            <p className="text-sm text-gray-600">{profile.studentId} • {profile.floorId.replace('-', ' ').toUpperCase()}</p>
-          </div>
-          <button
-            onClick={() => signOut()}
-            className="text-sm text-gray-600 hover:text-gray-900"
-          >
-            Sign Out
-          </button>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
         {/* Incident Controls */}
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center justify-between">
+        <motion.div
+          className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 mb-1">Incident Control</h2>
+              <h2 className="text-lg font-bold text-gray-900">Incident Control</h2>
               <p className="text-sm text-gray-600">
                 {incident ? `Active since ${incident.startedAt instanceof Timestamp ? incident.startedAt.toDate().toLocaleTimeString() : new Date(incident.startedAt).toLocaleTimeString()}` : 'No active incident'}
               </p>
             </div>
             <div>
               {incident ? (
-                <button
+                <motion.button
                   onClick={handleEndIncident}
                   disabled={actionLoading}
-                  className="bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-semibold px-6 py-3 rounded-lg transition"
+                  className="rounded-lg bg-red-600 px-6 py-3 font-semibold text-white transition disabled:bg-red-300 hover:bg-red-700"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                 >
                   End Incident
-                </button>
+                </motion.button>
               ) : (
-                <button
+                <motion.button
                   onClick={handleStartIncident}
                   disabled={actionLoading}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold px-6 py-3 rounded-lg transition"
+                  className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition disabled:bg-blue-300 hover:bg-blue-700"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                 >
                   Start Incident
-                </button>
+                </motion.button>
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Statistics */}
         {incident && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-xl shadow-sm border p-4">
-              <p className="text-sm text-gray-600 mb-1">Total Residents</p>
+          <motion.div
+            className="grid grid-cols-2 gap-4 md:grid-cols-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            layout
+          >
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="mb-1 text-sm text-gray-600">Total Residents</p>
               <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
             </div>
-            <div className="bg-green-50 rounded-xl border border-green-200 p-4">
-              <p className="text-sm text-green-700 mb-1">Accounted (GPS)</p>
+            <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+              <p className="mb-1 text-sm text-green-700">Accounted (GPS)</p>
               <p className="text-3xl font-bold text-green-900">{stats.accountedGPS}</p>
             </div>
-            <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
-              <p className="text-sm text-blue-700 mb-1">Accounted (Manual)</p>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <p className="mb-1 text-sm text-blue-700">Accounted (Manual)</p>
               <p className="text-3xl font-bold text-blue-900">{stats.accountedManual}</p>
             </div>
-            <div className="bg-red-50 rounded-xl border border-red-200 p-4">
-              <p className="text-sm text-red-700 mb-1">Missing</p>
-              <p className="text-3xl font-bold text-red-900">{stats.missing}</p>
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+              <p className="mb-1 text-sm text-red-700">Missing</p>
+              <motion.p
+                className="text-3xl font-bold text-red-900"
+                key={stats.missing}
+                initial={{ scale: 1.2 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+              >
+                {stats.missing}
+              </motion.p>
             </div>
-          </div>
+          </motion.div>
         )}
        
         {incident && (
-  <div className="bg-white rounded-xl shadow-sm border p-6">
-    <h3 className="font-semibold text-gray-900 mb-2">Help requests</h3>
+          <motion.div
+            className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.15 }}
+          >
+            <h3 className="mb-4 font-semibold text-gray-900">Help requests</h3>
 
-    {helpRequests.length === 0 ? (
-      <p className="text-sm text-gray-600">No open help requests.</p>
-    ) : (
-      <ul className="divide-y">
-        {helpRequests.map((r) => (
-          <li key={r.id} className="py-3 flex justify-between">
-            <span className="text-sm font-medium text-gray-900">{r.studentId}</span>
-            <span className="text-sm text-gray-600">Room {r.roomNumber || '-'}</span>
-          </li>
-        ))}
-      </ul>
-    )}
-  </div>
-)}
+            {helpRequests.length === 0 ? (
+              <p className="text-sm text-gray-600">No open help requests.</p>
+            ) : (
+              <ul className="divide-y divide-gray-200">
+                {helpRequests.map((r) => (
+                  <motion.li
+                    key={r.id}
+                    className="flex justify-between py-3 transition-colors hover:bg-gray-50"
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                  >
+                    <span className="text-sm font-medium text-gray-900">{r.studentId}</span>
+                    <span className="text-sm text-gray-600">Room {r.roomNumber || '-'}</span>
+                  </motion.li>
+                ))}
+              </ul>
+            )}
+          </motion.div>
+        )}
 
 
         {/* Roster Table */}
         {incident && (
-          <div className="bg-white rounded-xl shadow-sm border">
+          <motion.div
+            className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
             <div className="p-6 border-b">
               <h3 className="font-semibold text-gray-900 mb-4">Resident Roster</h3>
              
@@ -441,7 +447,13 @@ export default function RAPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {filteredStatuses.map((status) => (
-                    <tr key={status.user.uid} className="hover:bg-gray-50">
+                    <motion.tr
+                      key={status.user.uid}
+                      className="transition-colors hover:bg-gray-50"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      whileHover={{ backgroundColor: 'rgba(249, 250, 251, 1)' }}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {status.user.studentId}
                       </td>
@@ -489,25 +501,38 @@ export default function RAPage() {
                           </button>
                         )}
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {!incident && (
-          <div className="bg-white rounded-xl shadow-sm border p-12 text-center">
+          <div className="rounded-xl border border-gray-200 bg-white p-12 text-center shadow-sm">
             <p className="text-gray-600">Start an incident to view and manage resident attendance.</p>
           </div>
         )}
-      </main>
 
       {/* Manual Check-in Modal */}
-      {manualCheckInUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+      <AnimatePresence>
+        {manualCheckInUser && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => { setManualCheckInUser(null); setManualReason(''); }}
+          >
+            <motion.div
+              className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <h3 className="text-lg font-bold text-gray-900 mb-4">Manual Check-in</h3>
             <p className="text-sm text-gray-600 mb-4">
               Mark <span className="font-semibold">{manualCheckInUser.studentId}</span> as present
@@ -539,9 +564,10 @@ export default function RAPage() {
                 Confirm
               </button>
             </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
 
-const VALID_REDIRECTS = ['/ra', '/resident', '/office', '/admin'];
+const VALID_REDIRECTS = ['/ra', '/resident', '/office'];
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -87,15 +88,31 @@ export default function LoginPage() {
           </button>
         </form>
 
+        <p className="mt-6 text-center text-sm text-gray-600">
+          Don&apos;t have an account?{' '}
+          <Link href="/signup" className="font-semibold text-blue-600 hover:text-blue-700">
+            Sign Up
+          </Link>
+        </p>
+
         <div className="mt-8 pt-6 border-t border-gray-200">
-          <p className="text-sm text-gray-600 mb-2 font-semibold">Demo Accounts:</p>
+          <p className="text-sm text-gray-600 mb-2 font-semibold">Demo Accounts (password: Demo123!):</p>
           <div className="text-xs text-gray-500 space-y-1">
+            <p>Office: office@e.ntu.edu.sg</p>
             <p>RA: ra.floor3@e.ntu.edu.sg</p>
-            <p>Resident: resident1.f3@e.ntu.edu.sg</p>
-            <p className="mt-2">Password: <span className="font-mono bg-gray-100 px-1 rounded">Demo123!</span></p>
+            <p>Resident (RA access): resident1.f3@e.ntu.edu.sg (A0101001A)</p>
+            <p>Resident (no RA): resident2.f3@e.ntu.edu.sg (A0101002B)</p>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" /></div>}>
+      <LoginForm />
+    </Suspense>
   );
 }
