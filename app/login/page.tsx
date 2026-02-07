@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
+
+const VALID_REDIRECTS = ['/ra', '/resident', '/office', '/admin'];
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -11,6 +13,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get('redirect') || '/';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,10 +23,11 @@ export default function LoginPage() {
 
     try {
       await signIn(email, password);
-      // Redirect will be handled by middleware based on role
-      router.push('/');
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign in');
+      const target = VALID_REDIRECTS.includes(redirect) ? redirect : '/';
+      router.push(target);
+    } catch (err: unknown) {
+      const e = err as Error;
+      setError(e?.message || 'Failed to sign in');
     } finally {
       setLoading(false);
     }

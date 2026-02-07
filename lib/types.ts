@@ -109,3 +109,9 @@ export interface HelpRequest {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface RaAssignment {
+  id?: string;
+  raStudentId: string;
+  hostelId: string;
+}

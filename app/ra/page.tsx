@@ -13,6 +13,7 @@ export default function RAPage() {
   const router = useRouter();
  
   const [incident, setIncident] = useState<Incident | null>(null);
+  const [raAssignmentHostelId, setRaAssignmentHostelId] = useState<string | null>(null);
   const [residents, setResidents] = useState<UserProfile[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [residentStatuses, setResidentStatuses] = useState<ResidentStatus[]>([]);
@@ -73,25 +74,44 @@ export default function RAPage() {
     return () => unsubscribe();
   }, [profile]);
 
-  // Fetch residents on this floor
+  // Get hostelId from raAssignments or fall back to profile
   useEffect(() => {
     if (!profile) return;
 
+    const unsub = onSnapshot(
+      query(collection(db, 'raAssignments'), where('raStudentId', '==', profile.studentId)),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const data = snapshot.docs[0].data() as { hostelId: string };
+          setRaAssignmentHostelId(data.hostelId);
+        } else {
+          setRaAssignmentHostelId(null);
+        }
+      },
+      (err) => console.error('raAssignments listener error:', err)
+    );
+
+    return () => unsub();
+  }, [profile]);
+
+  // Fetch residents by hostelId (from raAssignment or profile)
+  useEffect(() => {
+    if (!profile) return;
+
+    const effectiveHostelId = raAssignmentHostelId ?? profile.hostelId;
     const q = query(
       collection(db, 'users'),
-      where('hostelId', '==', profile.hostelId),
-      where('blockId', '==', profile.blockId),
-      where('floorId', '==', profile.floorId),
+      where('hostelId', '==', effectiveHostelId),
       where('role', '==', 'resident')
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const residentList = snapshot.docs.map(doc => doc.data() as UserProfile);
+      const residentList = snapshot.docs.map(d => d.data() as UserProfile);
       setResidents(residentList);
     });
 
     return () => unsubscribe();
-  }, [profile]);
+  }, [profile, raAssignmentHostelId]);
 
   // Listen to attendance records for current incident
   useEffect(() => {
@@ -103,9 +123,9 @@ export default function RAPage() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const attendanceList = snapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id,
+      const attendanceList = snapshot.docs.map(d => ({
+        ...d.data(),
+        id: d.id,
       } as AttendanceRecord));
       setAttendance(attendanceList);
     });

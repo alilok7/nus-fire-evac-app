@@ -19,6 +19,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   query,
   updateDoc,
   where,
@@ -52,6 +53,10 @@ export default function OfficeResidencePage() {
 
   const [blockCount, setBlockCount] = useState(0);
   const [floorCount, setFloorCount] = useState(0);
+
+  const [raStudentId, setRaStudentId] = useState("");
+  const [raAssignments, setRaAssignments] = useState<{ id: string; raStudentId: string; hostelId: string }[]>([]);
+  const [assignmentBusy, setAssignmentBusy] = useState(false);
 
   useEffect(() => {
     const run = async () => {
@@ -94,6 +99,42 @@ export default function OfficeResidencePage() {
 
     run();
   }, [hostelId]);
+
+  useEffect(() => {
+    const q = query(
+      collection(db, "raAssignments"),
+      where("hostelId", "==", hostelId)
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map((d) => {
+        const data = d.data() as { raStudentId: string; hostelId: string };
+        return { id: d.id, raStudentId: data.raStudentId, hostelId: data.hostelId };
+      });
+      setRaAssignments(list);
+    });
+    return () => unsub();
+  }, [hostelId]);
+
+  const handleAddRaAssignment = async () => {
+    if (!raStudentId.trim()) {
+      alert("Enter RA Student ID");
+      return;
+    }
+    setAssignmentBusy(true);
+    try {
+      await addDoc(collection(db, "raAssignments"), {
+        raStudentId: raStudentId.trim(),
+        hostelId,
+      });
+      setRaStudentId("");
+    } catch (e: unknown) {
+      const err = e as Error;
+      console.error(e);
+      alert(err?.message || "Failed to add assignment");
+    } finally {
+      setAssignmentBusy(false);
+    }
+  };
 
   const handleAddCheckpoint = async () => {
     if (!cpName.trim()) return alert("Enter checkpoint name");
@@ -253,7 +294,46 @@ export default function OfficeResidencePage() {
         )}
       </div>
 
-      {/* CARD 2: Checkpoints */}
+      {/* CARD 2: Assign RA to accommodation */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <h2 className="font-semibold text-gray-900 mb-3">Assign RA to this accommodation</h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Assign an RA (by student ID) to this accommodation. The RA will see all residents in {hostelName} on their dashboard.
+        </p>
+        <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label htmlFor="raStudentId" className="block text-xs font-medium text-gray-600 mb-1">RA Student ID</label>
+            <input
+              id="raStudentId"
+              value={raStudentId}
+              onChange={(e) => setRaStudentId(e.target.value)}
+              placeholder="e.g. A0001001X"
+              className="border rounded-lg px-3 py-2 w-40"
+            />
+          </div>
+          <button
+            onClick={handleAddRaAssignment}
+            disabled={assignmentBusy}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold px-4 py-2 rounded-lg"
+          >
+            {assignmentBusy ? "Adding..." : "Add assignment"}
+          </button>
+        </div>
+        {raAssignments.length > 0 && (
+          <div className="mt-4">
+            <p className="text-sm font-medium text-gray-700 mb-2">RAs assigned to this accommodation:</p>
+            <ul className="divide-y border rounded-lg">
+              {raAssignments.map((a) => (
+                <li key={a.id} className="px-3 py-2 text-sm text-gray-800">
+                  RA {a.raStudentId}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* CARD 3: Checkpoints */}
       <div className="bg-white rounded-xl shadow-sm border p-6">
         <h2 className="font-semibold text-gray-900 mb-3">Checkpoints</h2>
 
