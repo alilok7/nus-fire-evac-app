@@ -98,3 +98,14 @@ export interface ResidentStatus {
   record?: AttendanceRecord;
   gpsConfidence?: GPSConfidence;
 }
+
+export interface HelpRequest {
+  id: string;
+  incidentId: string;
+  userId: string;
+  studentId: string;
+  roomNumber?: string;
+  status: 'open' | 'resolved';
+  createdAt: Date;
+  updatedAt: Date;
+}
