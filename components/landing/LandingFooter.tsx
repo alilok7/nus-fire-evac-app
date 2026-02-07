@@ -11,7 +11,7 @@ export default function LandingFooter() {
       <div className="mx-auto max-w-6xl px-6">
         <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
           <div>
-            <p className="font-semibold text-gray-900">EvacTrack</p>
+            <p className="font-semibold text-gray-900">NUSNextAlert</p>
             <p className="text-sm text-gray-600">NUS Hostel Evacuation System</p>
           </div>
           <div className="flex gap-6">

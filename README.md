@@ -1,4 +1,4 @@
-# EvacTrack
+# NUSNextAlert
 
 **NUS Hostel Evacuation Attendance System**
 
@@ -30,7 +30,7 @@ A real-time GPS-based evacuation attendance tracking system for NUS hostels, bui
 ### 1. Clone and Install
 
 ```bash
-cd evactrack
+cd nusnextalert
 npm install
 ```
 
@@ -160,7 +160,7 @@ Open [http://localhost:3000](http://localhost:3000)
 ## 🗂️ Project Structure
 
 ```
-evactrack/
+nusnextalert/
 ├── app/
 │   ├── login/page.tsx          # Authentication page
 │   ├── resident/page.tsx       # Resident interface

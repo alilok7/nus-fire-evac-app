@@ -1,10 +1,7 @@
 /**
- * Unsplash image URLs for landing page carousel and sections.
- * Uses direct Unsplash URLs with query params for sizing.
- * Attribution required per Unsplash guidelines.
+ * Landing page carousel and section images.
+ * Hero slides use local NUS accommodation photos in public/carousel.
  */
-
-const UNSPLASH_BASE = "https://images.unsplash.com";
 
 export interface LandingImage {
   url: string;
@@ -13,35 +10,31 @@ export interface LandingImage {
   photographerUrl: string;
 }
 
-function buildUrl(id: string, w = 1920, q = 80): string {
-  return `${UNSPLASH_BASE}/photo-${id}?w=${w}&q=${q}&fit=crop`;
-}
-
-/** Hero carousel slides: NUS accommodation themed - Singapore university, residence halls, campus */
+/** Hero carousel slides: NUS accommodation photos */
 export const HERO_SLIDES: LandingImage[] = [
   {
-    url: buildUrl("1542019886894-8346ec5e3e4b"),
-    alt: "Graduates in front of Singapore university building",
-    photographer: "Lucas Law",
-    photographerUrl: "https://unsplash.com/@lucaslaw__",
+    url: "/carousel/dorm-room.png",
+    alt: "NUS student dormitory room with desk and natural light",
+    photographer: "NUS",
+    photographerUrl: "#",
   },
   {
-    url: buildUrl("1677594334053-afe4b41aa0a3"),
-    alt: "Students in front of university residence building",
-    photographer: "The Jopwell Collection",
-    photographerUrl: "https://unsplash.com/@jopwell",
+    url: "/carousel/temasek-hall.png",
+    alt: "Temasek Hall, NUS accommodation residence",
+    photographer: "NUS",
+    photographerUrl: "#",
   },
   {
-    url: buildUrl("1581634928711-e19c3d57478d"),
-    alt: "NUS-style residence hall with stone facade",
-    photographer: "Adam Bouse",
-    photographerUrl: "https://unsplash.com/@adambouse",
+    url: "/carousel/campus-buildings.png",
+    alt: "NUS campus modern residence buildings and greenery",
+    photographer: "NUS",
+    photographerUrl: "#",
   },
   {
-    url: buildUrl("1714494976468-3948f7fa4a2a"),
-    alt: "University campus building with clock tower",
-    photographer: "Austin",
-    photographerUrl: "https://unsplash.com/@austin_7792",
+    url: "/carousel/nus-pool-sunset.png",
+    alt: "NUS buildings and student accommodation reflected in pool at sunset",
+    photographer: "NUS",
+    photographerUrl: "#",
   },
 ];
 

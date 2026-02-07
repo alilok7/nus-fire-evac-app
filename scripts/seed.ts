@@ -1,5 +1,5 @@
 /**
- * Seed script for EvacTrack
+ * Seed script for NUSNextAlert
  * Run with: npx tsx scripts/seed.ts
  *
  * 1. Put serviceAccountKey.json in project root (from Firebase Console > Project Settings > Service Accounts > Generate new private key)

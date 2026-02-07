@@ -64,7 +64,7 @@ export default function LandingHeroCarousel() {
                   transition={{ duration: 0.6, delay: 0.2 }}
                 >
                   <h1 className="text-4xl font-bold tracking-tight text-white drop-shadow-lg sm:text-5xl md:text-6xl">
-                    EvacTrack
+                    NUSNextAlert
                   </h1>
                   <p className="mt-4 text-lg text-white/95 drop-shadow sm:text-xl md:text-2xl">
                     Real-Time Evacuation Tracking for NUS Hostels

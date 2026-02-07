@@ -20,7 +20,7 @@ export default function LandingCTA() {
             Ready to get started?
           </h2>
           <p className="mt-4 text-lg text-gray-600">
-            Sign in or create an account to access EvacTrack.
+            Sign in or create an account to access NUSNextAlert.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link

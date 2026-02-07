@@ -55,7 +55,7 @@ export default function LandingFeatures() {
         >
           <h2 className="text-3xl font-bold text-gray-900 sm:text-4xl">Features</h2>
           <p className="mt-4 max-w-2xl mx-auto text-lg text-gray-600">
-            EvacTrack helps NUS hostels manage evacuations efficiently with real-time tracking and instant communication.
+            NUSNextAlert helps NUS hostels manage evacuations efficiently with real-time tracking and instant communication.
           </p>
         </motion.div>
 

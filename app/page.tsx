@@ -26,7 +26,7 @@ export default function Home() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-sm border p-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">EvacTrack</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">NUSNextAlert</h1>
         <p className="text-sm text-gray-600 mb-6">NUS Hostel Evacuation System</p>
 
         <h2 className="font-semibold text-gray-800 mb-3">Navigation</h2>

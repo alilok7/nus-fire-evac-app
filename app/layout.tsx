@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EvacTrack - NUS Hostel Evacuation System",
+  title: "NUSNextAlert - NUS Hostel Evacuation System",
   description: "Real-time evacuation attendance tracking for NUS hostels",
 };
 
