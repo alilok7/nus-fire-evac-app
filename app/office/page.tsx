@@ -1,121 +1,182 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, doc, setDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { NUS_RESIDENCES } from "@/lib/nusResidences";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 
-type HostelDoc = {
-  id: string;
-  name: string;
-};
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+  Timestamp,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
-function slugify(input: string) {
-  return input
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
+export default function OfficeResidencePage() {
+  const params = useParams();
+  const hostelId = String(params.hostelId);
 
-export default function OfficePage() {
-  const [hostels, setHostels] = useState<HostelDoc[]>([]);
-  const [search, setSearch] = useState("");
+  const [hostelName, setHostelName] = useState(hostelId);
   const [loading, setLoading] = useState(true);
-  const [seeding, setSeeding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return hostels;
-    return hostels.filter((h) => h.name.toLowerCase().includes(q));
-  }, [hostels, search]);
-
-  const loadHostels = async () => {
-    const snap = await getDocs(collection(db, "hostels"));
-    const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as HostelDoc[];
-    list.sort((a, b) => a.name.localeCompare(b.name));
-    setHostels(list);
-  };
+  const [blockCount, setBlockCount] = useState(0);
+  const [floorCount, setFloorCount] = useState(0);
 
   useEffect(() => {
     const run = async () => {
       setLoading(true);
-      await loadHostels();
-      setLoading(false);
-    };
-    run();
-  }, []);
+      setError(null);
 
-  const seedResidences = async () => {
-    setSeeding(true);
+      try {
+        // hostel name
+        const hostelSnap = await getDoc(doc(db, "hostels", hostelId));
+        if (hostelSnap.exists()) {
+          const data = hostelSnap.data() as any;
+          setHostelName(data?.name || hostelId);
+        } else {
+          setHostelName(hostelId);
+        }
+
+        // blocks / floors counts (so we can start incidents later)
+        const blocksSnap = await getDocs(
+          query(collection(db, "blocks"), where("hostelId", "==", hostelId))
+        );
+        const floorsSnap = await getDocs(
+          query(collection(db, "floors"), where("hostelId", "==", hostelId))
+        );
+
+        setBlockCount(blocksSnap.size);
+        setFloorCount(floorsSnap.size);
+      } catch (e: any) {
+        console.error(e);
+        setError(e?.message || String(e));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    run();
+  }, [hostelId]);
+
+  const startResidenceIncident = async () => {
+    setBusy(true);
+    setError(null);
+
     try {
+      const floorsSnap = await getDocs(
+        query(collection(db, "floors"), where("hostelId", "==", hostelId))
+      );
+
+      if (floorsSnap.size === 0) {
+        alert("No floors exist for this residence yet. Create floors first.");
+        return;
+      }
+
       await Promise.all(
-        NUS_RESIDENCES.map(async (name) => {
-          const id = slugify(name);
-          await setDoc(doc(db, "hostels", id), { name, createdAt: new Date() }, { merge: true });
+        floorsSnap.docs.map(async (d) => {
+          const f = d.data() as any;
+          await addDoc(collection(db, "incidents"), {
+            hostelId,
+            blockId: f.blockId,
+            floorId: d.id,
+            status: "active",
+            startedAt: Timestamp.now(),
+          });
         })
       );
-      await loadHostels();
-      alert("Seeded NUS residences into Firestore (hostels collection).");
+
+      alert(`Started incidents for ${floorsSnap.size} floors.`);
     } catch (e: any) {
       console.error(e);
-      alert(e?.message || "Seeding failed. Check Firestore permissions.");
+      setError(e?.message || String(e));
     } finally {
-      setSeeding(false);
+      setBusy(false);
+    }
+  };
+
+  const endAllActiveIncidents = async () => {
+    setBusy(true);
+    setError(null);
+
+    try {
+      const activeSnap = await getDocs(
+        query(
+          collection(db, "incidents"),
+          where("hostelId", "==", hostelId),
+          where("status", "==", "active")
+        )
+      );
+
+      await Promise.all(
+        activeSnap.docs.map(async (d) => {
+          await updateDoc(doc(db, "incidents", d.id), {
+            status: "resolved",
+            resolvedAt: Timestamp.now(),
+          });
+        })
+      );
+
+      alert(`Ended ${activeSnap.size} active incidents.`);
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-      <div className="bg-white rounded-xl shadow-sm border p-6">
-        <h1 className="text-2xl font-bold text-gray-900">Office Dashboard</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          Select a residence to manage incidents, checkpoints, and RAs.
-        </p>
-
-        <div className="mt-5 flex gap-3">
-          <button
-            onClick={seedResidences}
-            disabled={seeding}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold px-4 py-2 rounded-lg"
-          >
-            {seeding ? "Seeding..." : "Seed NUS residences (17)"}
-          </button>
-
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search residence..."
-            className="flex-1 border rounded-lg px-3 py-2"
-          />
-        </div>
+      <div className="flex items-center justify-between">
+        <Link href="/office" className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+          ← Back
+        </Link>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border p-6">
-        <h2 className="font-semibold text-gray-900 mb-3">Residences</h2>
+        <h1 className="text-2xl font-bold text-gray-900">{hostelName}</h1>
+        <p className="text-sm text-gray-600 mt-1">Residence ID: {hostelId}</p>
 
-        {loading ? (
-          <p className="text-sm text-gray-600">Loading…</p>
-        ) : filtered.length === 0 ? (
-          <p className="text-sm text-gray-600">No residences found. Click “Seed” first.</p>
-        ) : (
-          <ul className="divide-y">
-            {filtered.map((h) => (
-              <li key={h.id} className="py-3 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">{h.name}</p>
-                  <p className="text-xs text-gray-500">ID: {h.id}</p>
-                </div>
-                <Link
-                  href={`/office/${h.id}`}
-                  className="text-sm font-semibold text-blue-600 hover:text-blue-700"
-                >
-                  Open →
-                </Link>
-              </li>
-            ))}
-          </ul>
+        <div className="mt-4 text-sm text-gray-700">
+          {loading ? (
+            <p>Loading blocks/floors…</p>
+          ) : (
+            <p>
+              Blocks: <b>{blockCount}</b> · Floors: <b>{floorCount}</b>
+            </p>
+          )}
+        </div>
+
+        <div className="mt-5 flex gap-3">
+          <button
+            onClick={startResidenceIncident}
+            disabled={busy}
+            className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-semibold px-4 py-2 rounded-lg"
+          >
+            {busy ? "Working..." : "Start incident (whole residence)"}
+          </button>
+
+          <button
+            onClick={endAllActiveIncidents}
+            disabled={busy}
+            className="bg-gray-800 hover:bg-gray-900 disabled:opacity-60 text-white font-semibold px-4 py-2 rounded-lg"
+          >
+            {busy ? "Working..." : "End all active incidents"}
+          </button>
+        </div>
+
+        {error && (
+          <div className="mt-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="font-semibold">Error</div>
+            <div className="mt-1">{error}</div>
+          </div>
         )}
       </div>
     </main>
