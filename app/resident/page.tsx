@@ -3,15 +3,16 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
-import { collection, query, where, onSnapshot, addDoc, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, getDocs, Timestamp,  doc, setDoc, updateDoc  } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Incident, Checkpoint, AttendanceRecord, LocationState } from '@/lib/types';
+import { Incident, Checkpoint, AttendanceRecord, LocationState, HelpRequest } from '@/lib/types';
 import { getCurrentPosition, calculateDistance, formatDistance, getGPSConfidence } from '@/lib/utils';
+
 
 export default function ResidentPage() {
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
-  
+ 
   const [incident, setIncident] = useState<Incident | null>(null);
   const [checkpoint, setCheckpoint] = useState<Checkpoint | null>(null);
   const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
@@ -20,6 +21,8 @@ export default function ResidentPage() {
   const [locationError, setLocationError] = useState<string>('');
   const [locationLoading, setLocationLoading] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [helpRequest, setHelpRequest] = useState<HelpRequest | null>(null);
+
 
   // Redirect if not authenticated or not a resident
   useEffect(() => {
@@ -106,7 +109,7 @@ export default function ResidentPage() {
   const getLocation = async () => {
     setLocationLoading(true);
     setLocationError('');
-    
+   
     try {
       const position = await getCurrentPosition();
       const newLocation: LocationState = {
@@ -133,6 +136,18 @@ export default function ResidentPage() {
       setLocationLoading(false);
     }
   };
+ 
+  useEffect(() => {
+  if (!incident || !user) return;
+
+  const ref = doc(db, 'helpRequests', `${incident.id}_${user.uid}`);
+  const unsub = onSnapshot(ref, (snap) => {
+    if (snap.exists()) setHelpRequest({ ...(snap.data() as any), id: snap.id });
+    else setHelpRequest(null);
+  });
+
+  return () => unsub();
+}, [incident, user]);
 
   const handleCheckIn = async () => {
     if (!incident || !checkpoint || !location || !user || !profile) return;
@@ -166,6 +181,29 @@ export default function ResidentPage() {
     } finally {
       setCheckingIn(false);
     }
+  };
+
+  const requestHelp = async () => {
+  if (!incident || !user || !profile) return;
+
+  await setDoc(doc(db, 'helpRequests', `${incident.id}_${user.uid}`), {
+    incidentId: incident.id,
+    userId: user.uid,
+    studentId: profile.studentId,
+    roomNumber: profile.roomNumber || null,
+    status: 'open',
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    });
+  };
+
+  const resolveHelp = async () => {
+    if (!incident || !user) return;
+
+    await updateDoc(doc(db, 'helpRequests', `${incident.id}_${user.uid}`), {
+      status: 'resolved',
+      updatedAt: Timestamp.now(),
+    });
   };
 
   if (authLoading || !profile) {
@@ -216,7 +254,7 @@ export default function ResidentPage() {
         {incident && (
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <h3 className="font-semibold text-gray-900 mb-4">Attendance Status</h3>
-            
+           
             {attendance ? (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -249,6 +287,34 @@ export default function ResidentPage() {
             )}
           </div>
         )}
+       
+        {/* Emergency */}
+        {incident && (
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h3 className="font-semibold text-gray-900 mb-2">Emergency</h3>
+
+            {helpRequest?.status === 'open' ? (
+              <button
+                onClick={resolveHelp}
+                className="w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 rounded-lg"
+              >
+                I’m safe now (cancel help request)
+              </button>
+            ) : (
+              <button
+                onClick={requestHelp}
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg"
+              >
+                I NEED HELP
+              </button>
+            )}
+
+            <p className="text-xs text-gray-500 mt-2">
+              This alerts the RA for your floor and shows your room number.
+            </p>
+          </div>
+        )}
+
 
         {/* Location & Check-in */}
         {incident && checkpoint && !attendance && (
