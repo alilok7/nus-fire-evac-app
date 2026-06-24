@@ -1,8 +1,12 @@
 # NUSNextAlert
 
-**NUS Hostel Evacuation Attendance System**
+**Real-time GPS evacuation attendance for NUS hostels.**
 
-A real-time GPS-based evacuation attendance tracking system for NUS hostels, built for hackathon MVP demonstration.
+When a fire alarm goes off, RAs account for residents with paper rosters and word of mouth, which is slow and error-prone in the exact moment it matters most. NUSNextAlert replaces that: residents confirm they're safe from their phone once they reach the assembly point, and RAs watch a live roster update in real time showing who is accounted for and who is still missing.
+
+Built as a hackathon MVP with Next.js 16, React 19, and Firebase, using Haversine distance for the 100m geofence.
+
+<!-- TODO: add a 20-30s demo GIF right here. It is the single biggest upgrade this repo can get. -->
 
 ## 🎯 Features
 
